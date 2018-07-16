@@ -62,3 +62,7 @@ target/
 *.swp
 .DS_Store
 .pytest_cache
+
+# other
+venv
+.vscode

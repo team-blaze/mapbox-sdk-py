@@ -1,17 +1,17 @@
 import json
+import collections
 
 from uritemplate import URITemplate
 
 from mapbox import errors
 from mapbox.services.base import Service
 
-
 class MapMatcher(Service):
     """Access to the Map Matching API V4"""
 
     api_name = 'matching'
-    api_version = 'v4'
-    valid_profiles = ['mapbox.driving', 'mapbox.cycling', 'mapbox.walking']
+    api_version = 'v5'
+    valid_profiles = ['mapbox/driving', 'mapbox/driving-traffic', 'mapbox/walking', 'mapbox/cycling']
 
     def _validate_profile(self, profile):
         if profile not in self.valid_profiles:
@@ -19,33 +19,69 @@ class MapMatcher(Service):
                 "{0} is not a valid profile".format(profile))
         return profile
 
-    def _validate_feature(self, val):
-        # validate single feature with linestring geometry up to 100 pts
-        try:
-            assert val['type'] == 'Feature'
-            assert val['geometry']['type'] == 'LineString'
-            assert len(val['geometry']['coordinates']) <= 100
-        except (TypeError, KeyError, AssertionError):
-            raise errors.InvalidFeatureError(
-                "Feature must have LineString geometry with <= 100 points")
-        return val
+    @staticmethod
+    def _validate_single_option(value, option):
+        if isinstance(value, list):
+            raise errors.InvalidParameterError('Was expecting a single parameter for option {} but got a list'.format(option))
 
-    def match(self, feature, gps_precision=None, profile='mapbox.driving'):
+    @staticmethod
+    def _join_list_or_single_option(value, separator):
+        if isinstance(value, list):
+            return separator.join(value)
+        else:
+            return value
+
+    def _format_options(self, options):
+        # Build query parameters from the options dictionary.
+        # No validation is done - options are passed through to the API
+        if options is None:
+            return None
+
+        formatted_options = collections.OrderedDict()
+        for (option, original_value) in options.items():
+            if option == 'annotations':
+                formatted_value = self._join_list_or_single_option(original_value, ',')
+            elif option == 'approaches':
+                formatted_value = ';'.join(original_value)
+            elif option == 'radiuses':
+                formatted_value = ';'.join(original_value)
+            elif option == 'waypoints':
+                formatted_value = ';'.join(original_value)
+            elif option == 'waypoint_names':
+                formatted_value = ';'.join(original_value)
+            elif option == 'timestamps':
+                formatted_value = ';'.join(original_value)
+            else:
+                # By default, pass through a single option
+                MapMatcher._validate_single_option(original_value, option)
+                formatted_value = original_value
+
+            formatted_options[option] = formatted_value
+
+        return formatted_options
+
+    def _format_coordinates(self, coordinates):
+        # Coordinates are a list of tuples - format them as a
+        # Semicolon-separated list of  {longitude},{latitude} coordinate pairs to visit in order
+
+        # Pick an output precision so we can more easily match URLs in our unit tests
+        string_coordinates = [tuple('{:.12f}'.format(flt) for flt in coordinate) for coordinate in coordinates]
+
+        formatted_coordinates = ';'.join([','.join(coordinate) for coordinate in string_coordinates])
+        
+        return formatted_coordinates
+
+    def match(self, coordinates, profile, options=None):
         """Match features to OpenStreetMap data."""
         profile = self._validate_profile(profile)
 
-        feature = self._validate_feature(feature)
-        geojson_line_feature = json.dumps(feature)
+        formatted_options = self._format_options(options)
+        formatted_coordinates = self._format_coordinates(coordinates)
 
-        uri = URITemplate(self.baseuri + '/{profile}.json').expand(
-            profile=profile)
+        path = '/{profile}/{coordinates}'.format(profile=profile, coordinates=formatted_coordinates)
+        uri = URITemplate(self.baseuri + path)
 
-        params = None
-        if gps_precision:
-            params = {'gps_precision': gps_precision}
-
-        res = self.session.post(uri, data=geojson_line_feature, params=params,
-                                headers={'Content-Type': 'application/json'})
+        res = self.session.get(uri, params=formatted_options)
         self.handle_http_error(res)
 
         def geojson():
