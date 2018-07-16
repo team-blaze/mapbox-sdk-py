@@ -14,7 +14,7 @@ with open('mapbox/__init__.py') as f:
             version = line.split("=")[1].strip().strip('"').strip("'")
             continue
 
-setup(name='mapbox',
+setup(name='basis-mapbox',
       version=version,
       description="A Python client for Mapbox services",
       long_description=long_description,
