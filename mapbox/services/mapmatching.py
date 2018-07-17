@@ -7,7 +7,7 @@ from mapbox import errors
 from mapbox.services.base import Service
 
 class MapMatcher(Service):
-    """Access to the Map Matching API V4"""
+    """Access to the Map Matching API V5"""
 
     api_name = 'matching'
     api_version = 'v5'
@@ -50,7 +50,7 @@ class MapMatcher(Service):
             elif option == 'waypoint_names':
                 formatted_value = ';'.join(original_value)
             elif option == 'timestamps':
-                formatted_value = ';'.join(original_value)
+                formatted_value = ';'.join([map(str, val) for val in original_value])
             else:
                 # By default, pass through a single option
                 MapMatcher._validate_single_option(original_value, option)
